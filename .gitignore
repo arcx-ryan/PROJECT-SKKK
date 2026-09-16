@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+coverage/
+
+# Runtime files
+*.log
+*.pid
+backend/uploads/*
+!backend/uploads/.gitkeep
+uploads/*
+!uploads/.gitkeep
+
+# Local/editor files
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.local
+
+# Temporary exports and database dumps
+*.dump
+*.bak
+*.tmp
+*.sql.bak
+
+# Other local projects present in the workspace
+ARCX2025/
+WEB-UJIAN26/
+
+# One-off local maintenance and debugging scripts
+/fix_admin.js
+/gen_hash.js
+/test_login.js
+/backend/fix_admin.js
+/backend/dump_schema.js

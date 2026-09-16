@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "IBM Plex Sans", Inter, system-ui, sans-serif;
+  color: #12345B;
+  background: #F4F8FC;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 8% 8%, rgba(30, 90, 168, 0.09), transparent 26rem),
+    linear-gradient(180deg, #F8FBFF 0%, #F4F8FC 100%);
+  color: #12345B;
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center bg-royal text-white px-5 py-2.5 rounded-lg font-sans text-sm font-semibold tracking-wide shadow-sm hover:bg-ink hover:-translate-y-0.5 hover:shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none;
+}
+
+.btn-outline {
+  @apply inline-flex items-center justify-center border border-line bg-white text-ink px-5 py-2.5 rounded-lg font-sans text-sm font-semibold tracking-wide shadow-sm hover:border-royal hover:bg-sky hover:text-royal hover:-translate-y-0.5 transition-all;
+}
+
+.field-label {
+  @apply block text-xs uppercase tracking-wide font-semibold text-slate mb-1.5 font-sans;
+}
+
+.field-input {
+  @apply w-full border border-line bg-white px-3.5 py-2.5 rounded-lg font-sans text-ink placeholder:text-slate/60 focus:outline-none focus:border-royal focus:ring-4 focus:ring-royal/10 transition-shadow;
+}
+
+.card {
+  @apply bg-white border border-line/80 rounded-2xl p-6 shadow-[0_12px_35px_rgba(18,52,91,0.06)];
+}
+
+.card-emboss {
+  background: linear-gradient(145deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow:
+    inset 5px 5px 11px rgba(255, 255, 255, 0.96),
+    inset -7px -8px 14px rgba(18, 52, 91, 0.12),
+    0 4px 0 rgba(18, 52, 91, 0.08),
+    0 16px 30px rgba(18, 52, 91, 0.13);
+  border: 3px solid rgba(255, 255, 255, 0.9);
+}
+
+.image-emboss {
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  box-shadow:
+    inset 7px 7px 14px rgba(255, 255, 255, 0.38),
+    inset -9px -10px 16px rgba(9, 35, 70, 0.34),
+    0 5px 0 rgba(18, 52, 91, 0.12),
+    0 18px 32px rgba(18, 52, 91, 0.22);
+}
+
+table thead {
+  @apply bg-ink;
+}
+
+table th {
+  @apply text-xs uppercase tracking-wide font-semibold;
+}
+
+table tbody tr {
+  @apply transition-colors hover:bg-sky/50;
+}

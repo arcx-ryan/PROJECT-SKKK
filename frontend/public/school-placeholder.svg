@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 620" role="img" aria-labelledby="title desc">
+  <title id="title">Ilustrasi sekolah</title>
+  <desc id="desc">Ilustrasi gedung sekolah dengan pepohonan dan langit biru</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f69b7"/>
+      <stop offset="1" stop-color="#dcecff"/>
+    </linearGradient>
+    <linearGradient id="ground" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8bbd8c"/>
+      <stop offset="1" stop-color="#d7e9c2"/>
+    </linearGradient>
+  </defs>
+  <rect width="900" height="620" fill="url(#sky)"/>
+  <circle cx="740" cy="125" r="62" fill="#fff4c2" opacity=".9"/>
+  <path d="M0 430 Q140 360 280 430 T560 420 T900 400 V620 H0Z" fill="url(#ground)"/>
+  <path d="M180 455 V245 L450 135 720 245 V455Z" fill="#f7fbff"/>
+  <path d="M155 250 450 115 745 250 720 280 450 160 180 280Z" fill="#12345b"/>
+  <path d="M390 455 V330 H510 V455Z" fill="#2f69b7"/>
+  <path d="M215 285 H335 V380 H215Z M565 285 H685 V380 H565Z" fill="#9dcae8"/>
+  <path d="M225 295 H325 M225 325 H325 M575 295 H675 M575 325 H675" stroke="#fff" stroke-width="10" opacity=".8"/>
+  <rect x="410" y="195" width="80" height="62" rx="5" fill="#fff"/>
+  <text x="450" y="233" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#12345b">SEKOLAH</text>
+  <g fill="#245f3b">
+    <path d="M80 470 V315 H105 V470Z"/><circle cx="92" cy="300" r="72"/><circle cx="45" cy="345" r="48"/><circle cx="140" cy="350" r="52"/>
+    <path d="M785 470 V330 H810 V470Z"/><circle cx="798" cy="310" r="70"/><circle cx="755" cy="355" r="48"/><circle cx="845" cy="355" r="48"/>
+  </g>
+  <path d="M0 505 Q230 470 450 515 T900 500 V620 H0Z" fill="#5f9f69"/>
+</svg>
