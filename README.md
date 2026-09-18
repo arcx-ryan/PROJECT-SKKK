@@ -12,8 +12,11 @@ ujian secara online.
 - Guru hanya dapat mengelola soal pada mata pelajaran yang diampunya.
 - Generator soal menggunakan Google Gemini berdasarkan CP, TP, mata pelajaran,
   tingkat kesulitan, jumlah PG, dan jumlah Essay.
-- Import soal dari PDF dan pembuatan gambar soal dengan AI jika quota tersedia.
-- Import massal soal dari JSON dengan preview, konfirmasi, dan gambar Base64.
+- Import soal dari PDF sebagai sumber pembuatan soal.
+- Gambar soal dapat ditambahkan secara manual saat membuat atau mengedit soal;
+  sistem tidak membuat ilustrasi gambar secara otomatis.
+- Pembuatan soal melalui file JSON tidak tersedia; gunakan input manual atau
+  generator dengan sumber PDF.
 - Upload, preview, edit, dan hapus gambar soal.
 - Paket ujian dengan durasi, kelas, tahun pelajaran, jumlah PG, dan jumlah Essay.
 - Urutan soal PG sebelum Essay pada ujian siswa.
@@ -38,47 +41,6 @@ ujian secara online.
 - Halaman login menampilkan foto sekolah di sisi kanan pada layar desktop.
 - Kartu informasi homepage menggunakan efek emboss untuk tampilan visual yang
   lebih menonjol.
-
-### Format JSON Import Soal
-
-Guru dapat mengunggah JSON melalui halaman **Bank Soal Saya > Import Soal dari
-JSON**. Tombol **Unduh Template JSON** menyediakan contoh struktur yang dapat
-diubah. Pilih mapel, jenis ujian, dan tahun pelajaran, kemudian lakukan preview
-sebelum menyimpan. Metadata tersebut juga dapat diletakkan di JSON. Gambar
-disertakan sebagai data URI Base64 (PNG, JPG, WebP, atau GIF), contohnya:
-
-```json
-{
-  "mapel_id": 1,
-  "jenis_ujian_id": 2,
-  "tahun_pelajaran": "2026/2027",
-  "soal": [
-    {
-      "tipe_soal": "pilihan_ganda",
-      "pertanyaan": "Perhatikan grafik berikut. Apa kesimpulannya?",
-      "gambar": "data:image/png;base64,<BASE64_GAMBAR_ASLI>",
-      "opsi": {
-        "A": "Pilihan A",
-        "B": "Pilihan B",
-        "C": "Pilihan C",
-        "D": "Pilihan D"
-      },
-      "jawaban_benar": "B",
-      "bobot_nilai": 1
-    }
-  ]
-}
-```
-
-Satu file dibatasi maksimal 10 MB, maksimal 100 soal, dan setiap gambar
-maksimal 5 MB. Soal hanya tersimpan setelah preview dinyatakan valid dan guru
-menekan tombol **Simpan ke Bank Soal**.
-
-Nilai seperti `REQUIRES_EXTRACTION_FROM_PDF`, nama file gambar, atau teks
-placeholder lainnya bukan gambar dan akan ditolak. Jika grafik berasal dari
-PDF, gambar tersebut harus diekspor terlebih dahulu menjadi PNG/JPG lalu
-dikonversi ke data URI Base64. Alternatifnya, gunakan `gambar: null` dan
-tambahkan gambar setelah import melalui editor soal.
 
 ## Teknologi
 
@@ -316,7 +278,8 @@ melengkapi NIS, kelas, serta jenis kelamin.
 
 1. Admin membuat kelas, guru, mata pelajaran, dan akun siswa.
 2. Admin menetapkan mata pelajaran yang diampu guru.
-3. Guru membuat soal manual atau menggunakan generator AI.
+3. Guru membuat soal manual, menggunakan generator AI, atau menggunakan PDF
+   sebagai sumber generator.
 4. Guru membuat paket ujian dan menetapkan kelas serta komposisi soal.
 5. Siswa login, memilih ujian, mengerjakan PG lalu Essay, dan mengirim jawaban.
 6. Sistem menghitung nilai PG dan mengirim Essay ke Gemini jika AI aktif.
@@ -344,7 +307,7 @@ Semua endpoint berada di bawah prefix `/api`.
 | `GET/POST/PUT/DELETE` | `/guru` | Admin | Kelola guru dan mapel |
 | `GET/POST/PUT/DELETE` | `/mapel` | Admin | Kelola mata pelajaran |
 | `GET/POST/PUT/DELETE` | `/soal` | Guru | Kelola bank soal |
-| `POST` | `/soal/generate` | Guru | Generate/import soal berbantuan AI |
+| `POST` | `/soal/generate` | Guru | Generate soal dengan Gemini atau sumber PDF |
 | `GET` | `/soal/export-pdf` | Guru | Export bank soal ke PDF |
 | `GET/POST/PUT/DELETE` | `/ujian` | Guru/Admin | Kelola paket ujian |
 | `GET` | `/ujian/siswa/tersedia` | Siswa | Daftar ujian tersedia |

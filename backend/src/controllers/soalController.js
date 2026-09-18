@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
 const { Soal, Guru, MataPelajaran, JenisUjian, sequelize } = require('../models');
 const { getGeminiConfig } = require('../utils/geminiConfig');
@@ -257,156 +256,6 @@ function parseGeminiJson(text) {
   return JSON.parse(cleaned);
 }
 
-const MAX_IMPORTED_IMAGE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']);
-
-function parseImportedImage(value, index) {
-  if (!value) return null;
-  if (typeof value === 'string' && ['REQUIRES_EXTRACTION_FROM_PDF', 'GANTI_DENGAN_BASE64_GAMBAR'].includes(value.trim())) {
-    return null;
-  }
-  if (typeof value !== 'string' || !value.startsWith('data:')) {
-    throw new Error(`Gambar pada soal nomor ${index} belum berisi gambar asli. Gunakan data URI Base64 (data:image/...;base64,...) atau isi null jika soal tidak memiliki gambar.`);
-  }
-  const match = value.match(/^data:(image\/[a-z+.-]+);base64,([A-Za-z0-9+/=\s]+)$/i);
-  if (!match || !ALLOWED_IMAGE_MIMES.has(match[1].toLowerCase())) {
-    throw new Error(`Format gambar pada soal nomor ${index} tidak didukung. Gunakan PNG, JPG, WebP, atau GIF.`);
-  }
-  const buffer = Buffer.from(match[2].replace(/\s/g, ''), 'base64');
-  if (!buffer.length || buffer.length > MAX_IMPORTED_IMAGE_BYTES) {
-    throw new Error(`Ukuran gambar pada soal nomor ${index} harus lebih dari 0 dan maksimal 5 MB.`);
-  }
-  const extension = {
-    'image/jpeg': 'jpg',
-    'image/png': 'png',
-    'image/webp': 'webp',
-    'image/gif': 'gif',
-    'image/svg+xml': 'svg',
-  }[match[1].toLowerCase()];
-  return { buffer, extension };
-}
-
-function validateImportedQuestions(payload) {
-  const questions = Array.isArray(payload) ? payload : payload?.soal;
-  if (!Array.isArray(questions) || !questions.length || questions.length > 100) {
-    throw new Error('JSON harus memiliki array "soal" berisi 1 sampai 100 soal.');
-  }
-  const seen = new Set();
-  return questions.map((item, index) => {
-    if (!item || !['pilihan_ganda', 'essay'].includes(item.tipe_soal)) {
-      throw new Error(`Tipe soal pada nomor ${index + 1} harus pilihan_ganda atau essay.`);
-    }
-    if (!item.pertanyaan || !String(item.pertanyaan).trim()) {
-      throw new Error(`Pertanyaan pada nomor ${index + 1} wajib diisi.`);
-    }
-    const pertanyaan = String(item.pertanyaan).trim();
-    const duplicateKey = `${item.tipe_soal}:${pertanyaan.toLowerCase()}`;
-    if (seen.has(duplicateKey)) throw new Error(`Pertanyaan duplikat pada nomor ${index + 1}.`);
-    seen.add(duplicateKey);
-    if (item.tipe_soal === 'pilihan_ganda') {
-      const pilihan = ['A', 'B', 'C', 'D'];
-      if (!item.opsi || pilihan.some((key) => !item.opsi[key] || !String(item.opsi[key]).trim())) {
-        throw new Error(`Opsi A-D pada nomor ${index + 1} wajib diisi.`);
-      }
-      if (!pilihan.includes(item.jawaban_benar)) {
-        throw new Error(`Jawaban benar pada nomor ${index + 1} harus A, B, C, atau D.`);
-      }
-    }
-    const image = parseImportedImage(item.gambar, index + 1);
-    return {
-      ...item,
-      pertanyaan,
-      gambar: image,
-      cp: item.cp ? String(item.cp).trim() : null,
-      tp: item.tp ? String(item.tp).trim() : null,
-      bobot_nilai: Number(item.bobot_nilai) > 0 ? Number(item.bobot_nilai) : (item.tipe_soal === 'essay' ? 5 : 1),
-    };
-  });
-}
-
-exports.importJson = async (req, res) => {
-  const createdImagePaths = [];
-  try {
-    if (!req.file) return res.status(400).json({ message: 'Pilih file JSON yang akan diimport.' });
-    let payload;
-    try {
-      payload = JSON.parse(req.file.buffer.toString('utf8').replace(/^\uFEFF/, ''));
-    } catch (err) {
-      return res.status(400).json({ message: 'Isi file bukan JSON yang valid.', error: err.message });
-    }
-    const questions = validateImportedQuestions(payload);
-    const placeholderImageCount = questions.filter((item, index) => {
-      const source = Array.isArray(payload) ? payload[index] : payload.soal[index];
-      return typeof source?.gambar === 'string'
-        && ['REQUIRES_EXTRACTION_FROM_PDF', 'GANTI_DENGAN_BASE64_GAMBAR'].includes(source.gambar.trim());
-    }).length;
-    const isPreview = req.body.mode !== 'import';
-    const mapelId = payload.mapel_id || req.body.mapel_id;
-    const jenisUjianId = payload.jenis_ujian_id || req.body.jenis_ujian_id;
-    const tahunPelajaran = payload.tahun_pelajaran || req.body.tahun_pelajaran;
-    if (!mapelId || !jenisUjianId || !tahunPelajaran) {
-      return res.status(400).json({ message: 'mapel_id, jenis_ujian_id, dan tahun_pelajaran wajib diisi di JSON atau formulir.' });
-    }
-    if (!(await guruBolehAksesMapel(req.user.guru_id, mapelId))) {
-      return res.status(403).json({ message: 'Anda tidak mengampu mata pelajaran ini.' });
-    }
-    if (isPreview) {
-      return res.json({
-        message: placeholderImageCount
-          ? `JSON valid. ${placeholderImageCount} gambar masih berupa placeholder dan akan diimport tanpa gambar.`
-          : 'JSON valid dan siap diimport.',
-        data: {
-          jumlah: questions.length,
-          pilihan_ganda: questions.filter((item) => item.tipe_soal === 'pilihan_ganda').length,
-          essay: questions.filter((item) => item.tipe_soal === 'essay').length,
-          dengan_gambar: questions.filter((item) => item.gambar).length,
-          mapel_id: mapelId,
-          jenis_ujian_id: jenisUjianId,
-          tahun_pelajaran: tahunPelajaran,
-          peringatan: placeholderImageCount
-            ? [`${placeholderImageCount} soal memiliki placeholder gambar; tambahkan gambar setelah import jika diperlukan.`]
-            : [],
-          preview: questions.slice(0, 3).map((item) => ({
-            tipe_soal: item.tipe_soal,
-            pertanyaan: item.pertanyaan,
-            ada_gambar: Boolean(item.gambar),
-          })),
-        },
-      });
-    }
-    const rows = [];
-    for (const item of questions) {
-      let gambar = null;
-      if (item.gambar) {
-        const filename = `soal-import-${Date.now()}-${crypto.randomBytes(5).toString('hex')}.${item.gambar.extension}`;
-        fs.writeFileSync(path.join(ensureUploadDir(), filename), item.gambar.buffer);
-        gambar = `/uploads/${filename}`;
-        createdImagePaths.push(gambar);
-      }
-      rows.push({
-        guru_id: req.user.guru_id,
-        mapel_id: mapelId,
-        jenis_ujian_id: jenisUjianId,
-        tahun_pelajaran: tahunPelajaran,
-        tipe_soal: item.tipe_soal,
-        cp: item.cp,
-        tp: item.tp,
-        pertanyaan: item.pertanyaan,
-        gambar,
-        opsi: item.tipe_soal === 'essay' ? null : item.opsi,
-        jawaban_benar: item.tipe_soal === 'essay' ? null : item.jawaban_benar,
-        bobot_nilai: item.bobot_nilai,
-      });
-    }
-    const created = await sequelize.transaction(async (transaction) => Soal.bulkCreate(rows, { transaction }));
-    return res.status(201).json({ message: `${created.length} soal berhasil diimport ke bank soal.`, data: created });
-  } catch (err) {
-    createdImagePaths.forEach(removeUploadedFile);
-    console.error('Import JSON Soal Error:', err);
-    return res.status(400).json({ message: err.message || 'Gagal mengimport soal dari JSON.' });
-  }
-};
-
 function validateGeneratedQuestions(result, jumlahPg, jumlahEssay, strictCounts = true) {
   if (!result || !Array.isArray(result.soal)) throw new Error('Respons Gemini tidak memiliki format soal yang valid.');
   if (!result.soal.length || result.soal.length > 100) {
@@ -443,46 +292,7 @@ function validateGeneratedQuestions(result, jumlahPg, jumlahEssay, strictCounts 
   }
 }
 
-async function generateQuestionImage(prompt) {
-  const config = await getGeminiConfig();
-  if (!config.apiKey) throw new Error('API key Gemini belum dikonfigurasi oleh administrator.');
-  const model = config.imageModel;
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': config.apiKey,
-    },
-    body: JSON.stringify({
-      contents: [{
-        role: 'user',
-        parts: [{
-          text: `Create an educational illustration for a school exam. ${prompt}. No text, no labels, no logos, clean composition, suitable for SMP students.`,
-        }],
-      }],
-      generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
-    }),
-  });
-  const body = await response.json();
-  if (response.status === 429) {
-    throw new Error('Kuota model gambar Gemini sedang habis atau belum tersedia pada akun ini. Nonaktifkan opsi ilustrasi otomatis atau aktifkan billing Gemini.');
-  }
-  if (!response.ok) throw new Error(body.error?.message || 'Model gambar gagal membuat ilustrasi.');
-  const imagePart = body.candidates?.[0]?.content?.parts?.find((part) => part.inlineData || part.inline_data);
-  const imageData = imagePart?.inlineData || imagePart?.inline_data;
-  const image = imageData?.data;
-  const mimeType = imageData?.mimeType || imageData?.mime_type || 'image/png';
-  if (!image) throw new Error('Model gambar tidak mengembalikan file ilustrasi.');
-
-  const extension = mimeType === 'image/jpeg' ? 'jpg' : 'png';
-  const filename = `soal-ai-${Date.now()}-${crypto.randomBytes(5).toString('hex')}.${extension}`;
-  const uploadPath = ensureUploadDir();
-  fs.writeFileSync(path.join(uploadPath, filename), Buffer.from(image, 'base64'));
-  return `/uploads/${filename}`;
-}
-
 exports.generate = async (req, res) => {
-  const generatedImagePaths = [];
   try {
     const geminiConfig = await getGeminiConfig();
     if (!geminiConfig.apiKey) {
@@ -492,10 +302,9 @@ exports.generate = async (req, res) => {
     const {
       mapel_id, jenis_ujian_id, tahun_pelajaran, cp, tp,
       jumlah_pilihan_ganda, jumlah_essay, tingkat_kesulitan = 'sedang',
-      sumber_mode = 'referensi', generate_images = 'false',
+      sumber_mode = 'referensi',
     } = req.body;
     const mode = sumber_mode === 'import' ? 'import' : 'referensi';
-    const wantsImages = generate_images === true || generate_images === 'true';
     const jumlahPg = Number(jumlah_pilihan_ganda);
     const jumlahEssay = Number(jumlah_essay);
     if (mode === 'referensi' && (!Number.isInteger(jumlahPg) || jumlahPg < 0 || !Number.isInteger(jumlahEssay) || jumlahEssay < 0 || jumlahPg + jumlahEssay < 1)) {
@@ -530,10 +339,9 @@ exports.generate = async (req, res) => {
       mode === 'referensi' ? `Jumlah essay: ${jumlahEssay}` : 'Tentukan tipe soal berdasarkan bentuk soal pada PDF.',
       '',
       'Kembalikan HANYA JSON valid tanpa markdown dengan bentuk:',
-      '{"soal":[{"tipe_soal":"pilihan_ganda","pertanyaan":"...","opsi":{"A":"...","B":"...","C":"...","D":"..."},"jawaban_benar":"A","bobot_nilai":1,"gambar_diperlukan":true,"deskripsi_gambar":"..."},{"tipe_soal":"essay","pertanyaan":"...","opsi":null,"jawaban_benar":null,"bobot_nilai":5,"gambar_diperlukan":false,"deskripsi_gambar":""}]}',
+      '{"soal":[{"tipe_soal":"pilihan_ganda","pertanyaan":"...","opsi":{"A":"...","B":"...","C":"...","D":"..."},"jawaban_benar":"A","bobot_nilai":1},{"tipe_soal":"essay","pertanyaan":"...","opsi":null,"jawaban_benar":null,"bobot_nilai":5}]}',
       'Urutkan semua pilihan_ganda terlebih dahulu, lalu semua essay.',
       'Setiap pertanyaan harus berbeda, jelas, sesuai CP dan TP, serta tidak menyebut bahwa soal dibuat oleh AI.',
-      'Set gambar_diperlukan menjadi true hanya jika diagram, peta, grafik, objek visual, atau ilustrasi benar-benar membantu siswa menjawab soal.',
     ].join('\n');
     const model = geminiConfig.model;
     const parts = [{ text: prompt }];
@@ -575,19 +383,9 @@ exports.generate = async (req, res) => {
         jawaban_benar: item.tipe_soal === 'essay' ? null : item.jawaban_benar,
         bobot_nilai: Number(item.bobot_nilai) > 0 ? Number(item.bobot_nilai) : (item.tipe_soal === 'essay' ? 5 : 1),
       }));
-    if (wantsImages) {
-      for (let index = 0; index < sortedItems.length; index += 1) {
-        const item = sortedItems[index];
-        if (item.gambar_diperlukan && item.deskripsi_gambar) {
-          rows[index].gambar = await generateQuestionImage(String(item.deskripsi_gambar));
-          generatedImagePaths.push(rows[index].gambar);
-        }
-      }
-    }
     const created = await sequelize.transaction(async (transaction) => Soal.bulkCreate(rows, { transaction }));
-    res.status(201).json({ message: `${created.length} soal berhasil dibuat dan disimpan${generatedImagePaths.length ? `, termasuk ${generatedImagePaths.length} ilustrasi` : ''}.`, data: created });
+    res.status(201).json({ message: `${created.length} soal berhasil dibuat dan disimpan.`, data: created });
   } catch (err) {
-    generatedImagePaths.forEach(removeUploadedFile);
     console.error('Generate Soal Error:', err);
     res.status(502).json({ message: err.message || 'Gagal membuat soal dengan Gemini.' });
   }
