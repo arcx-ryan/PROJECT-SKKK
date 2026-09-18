@@ -7,6 +7,7 @@ export default function PesertaUjianPage() {
   const [peserta, setPeserta] = useState([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [generatingId, setGeneratingId] = useState(null);
 
   useEffect(() => {
     api.get(`/ujian/hasil/${id}/peserta`)
@@ -16,6 +17,22 @@ export default function PesertaUjianPage() {
       })
       .catch(() => setLoading(false));
   }, [id]);
+
+  const handleGenerateNilai = async (hasilId) => {
+    setGeneratingId(hasilId);
+    try {
+      const response = await api.post(`/ujian/hasil/generate-nilai/${hasilId}`);
+      setPeserta((current) => current.map((pesertaItem) => (
+        pesertaItem.id === hasilId
+          ? { ...pesertaItem, status: response.data.status, nilai: response.data.nilai }
+          : pesertaItem
+      )));
+    } catch (err) {
+      alert(err.response?.data?.message || 'Penilaian otomatis belum berhasil. Silakan coba lagi.');
+    } finally {
+      setGeneratingId(null);
+    }
+  };
 
   const handleExport = async () => {
     setExporting(true);
@@ -79,9 +96,21 @@ export default function PesertaUjianPage() {
                 </td>
                 <td className="px-4 py-2 text-slate">{p.nilai !== null ? p.nilai : '-'}</td>
                 <td className="px-4 py-2">
-                  <Link to={`/guru/penilaian/${p.id}`} className="text-moss hover:underline">
-                    Lihat Jawaban
-                  </Link>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Link to={`/guru/penilaian/${p.id}`} className="text-moss hover:underline">
+                      Lihat Jawaban
+                    </Link>
+                    {p.status === 'menunggu_penilaian' && (
+                      <button
+                        type="button"
+                        onClick={() => handleGenerateNilai(p.id)}
+                        disabled={generatingId === p.id}
+                        className="btn-primary text-xs disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {generatingId === p.id ? 'Membuat Nilai...' : 'Generate Nilai'}
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

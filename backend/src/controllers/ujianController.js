@@ -559,6 +559,77 @@ exports.getDetailJawaban = async (req, res) => {
   }
 };
 
+// ---------- GURU: Generate ulang nilai essay dengan Gemini ----------
+exports.generateNilai = async (req, res) => {
+  try {
+    const hasil = await HasilUjian.findByPk(req.params.id, {
+      include: [{ model: Ujian, attributes: ['id', 'dibuat_oleh'] }],
+    });
+
+    if (!hasil) return res.status(404).json({ message: 'Hasil ujian tidak ditemukan.' });
+    if (req.user.role === 'guru' && hasil.Ujian?.dibuat_oleh !== req.user.guru_id) {
+      return res.status(403).json({ message: 'Anda tidak memiliki akses untuk menilai hasil ujian ini.' });
+    }
+    if (hasil.status === 'selesai') {
+      return res.json({ message: 'Nilai ujian sudah tersedia.', status: hasil.status, nilai: hasil.nilai });
+    }
+    if (hasil.status !== 'menunggu_penilaian') {
+      return res.status(409).json({ message: 'Hasil ujian belum siap untuk dinilai ulang.' });
+    }
+
+    const semuaJawaban = await JawabanSiswa.findAll({ where: { hasil_ujian_id: hasil.id } });
+    const soalList = await Soal.findAll({ where: { id: semuaJawaban.map((jawaban) => jawaban.soal_id) } });
+    const soalMap = {};
+    soalList.forEach((soal) => { soalMap[soal.id] = soal; });
+    const essayAnswers = semuaJawaban.filter((jawaban) => soalMap[jawaban.soal_id]?.tipe_soal === 'essay');
+
+    if (essayAnswers.length === 0) {
+      return res.status(400).json({ message: 'Tidak ada jawaban essay untuk dinilai.' });
+    }
+
+    // Jika Gemini sedang sibuk, error dikembalikan dan status tetap menunggu_penilaian.
+    const scores = await nilaiEssayDenganGemini(essayAnswers, soalMap);
+    const scoresByAnswerId = new Map(scores.map((score) => [score.jawaban_id, score]));
+    semuaJawaban.forEach((jawaban) => {
+      const score = scoresByAnswerId.get(jawaban.id);
+      if (score) jawaban.nilai_essay = score.nilai_essay;
+    });
+    const hasilNilai = hitungNilai(semuaJawaban, soalMap);
+    const jumlahSalah = semuaJawaban.filter(
+      (jawaban) => soalMap[jawaban.soal_id]?.tipe_soal !== 'essay' && !jawaban.is_benar,
+    ).length;
+
+    await sequelize.transaction(async (transaction) => {
+      for (const score of scores) {
+        await JawabanSiswa.update(
+          { nilai_essay: score.nilai_essay, feedback_ai: score.feedback_ai },
+          { where: { id: score.jawaban_id, hasil_ujian_id: hasil.id }, transaction },
+        );
+      }
+      await hasil.update({
+        status: 'selesai',
+        nilai: hasilNilai.nilai,
+        nilai_pilihan_ganda: hasilNilai.nilai_pilihan_ganda,
+        nilai_essay: hasilNilai.nilai_essay,
+        jumlah_benar: hasilNilai.jumlah_benar,
+        jumlah_salah: jumlahSalah,
+      }, { transaction });
+    });
+
+    return res.json({
+      message: 'Nilai essay berhasil dibuat otomatis.',
+      status: 'selesai',
+      nilai: hasilNilai.nilai,
+    });
+  } catch (err) {
+    console.error('Manual Essay Grading Retry Error:', err);
+    return res.status(503).json({
+      message: `Penilaian otomatis belum berhasil: ${err.message}`,
+      status: 'menunggu_penilaian',
+    });
+  }
+};
+
 // ---------- GURU: Nilai Essay ----------
 exports.nilaiEssay = async (req, res) => {
   const t = await sequelize.transaction();

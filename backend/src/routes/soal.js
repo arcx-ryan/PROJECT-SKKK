@@ -42,10 +42,26 @@ const uploadSoalPdf = (req, res, next) => uploadPdf.single('pdf')(req, res, (err
   }
   return res.status(400).json({ message: err.message || 'Gagal mengunggah PDF sumber.' });
 });
+const uploadJson = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const isJson = file.mimetype === 'application/json' || /\.json$/i.test(file.originalname);
+    cb(isJson ? null : new Error('File sumber harus berformat JSON.'), isJson);
+  },
+});
+const uploadSoalJson = (req, res, next) => uploadJson.single('json')(req, res, (err) => {
+  if (!err) return next();
+  if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({ message: 'Ukuran JSON maksimal 10 MB.' });
+  }
+  return res.status(400).json({ message: err.message || 'Gagal mengunggah file JSON.' });
+});
 
 router.use(verifyToken, authorizeRole('guru', 'admin'));
 router.get('/export-pdf', c.exportPdf);
 router.get('/', c.getAll);
+router.post('/import-json', authorizeRole('guru'), uploadSoalJson, c.importJson);
 router.post('/generate', authorizeRole('guru'), uploadSoalPdf, c.generate);
 router.post('/', authorizeRole('guru'), uploadSoalImage, c.create); // hanya guru yang menambahkan soal
 router.put('/:id', authorizeRole('guru'), uploadSoalImage, c.update);

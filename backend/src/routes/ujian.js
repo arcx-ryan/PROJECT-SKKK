@@ -19,6 +19,7 @@ router.get('/hasil/:id', authorizeRole('siswa'), c.getHasil);
 // Guru: Penilaian essay dan peserta
 router.get('/hasil/:id/peserta', authorizeRole('guru', 'admin'), c.getPesertaUjian);
 router.get('/hasil/detail/:id', authorizeRole('guru', 'admin'), c.getDetailJawaban);
+router.post('/hasil/generate-nilai/:id', authorizeRole('guru', 'admin'), c.generateNilai);
 router.post('/hasil/nilai-essay/:id', authorizeRole('guru', 'admin'), c.nilaiEssay);
 
 // Guru & Admin: Export Excel

@@ -14,6 +14,39 @@ const savedContext = {
   tipe_soal: localStorage.getItem('guru-bank-soal-tipe') || 'pilihan_ganda',
 };
 
+const jsonImportTemplate = {
+  mapel_id: 1,
+  jenis_ujian_id: 1,
+  tahun_pelajaran: '2026/2027',
+  soal: [
+    {
+      tipe_soal: 'pilihan_ganda',
+      pertanyaan: 'Perhatikan grafik berikut. Apa kesimpulan yang tepat?',
+      gambar: null,
+      opsi: {
+        A: 'Pilihan jawaban A',
+        B: 'Pilihan jawaban B',
+        C: 'Pilihan jawaban C',
+        D: 'Pilihan jawaban D',
+      },
+      jawaban_benar: 'B',
+      bobot_nilai: 1,
+      cp: 'Capaian pembelajaran soal',
+      tp: 'Tujuan pembelajaran soal',
+    },
+    {
+      tipe_soal: 'essay',
+      pertanyaan: 'Jelaskan informasi yang terdapat pada grafik tersebut.',
+      gambar: null,
+      opsi: null,
+      jawaban_benar: null,
+      bobot_nilai: 5,
+      cp: 'Capaian pembelajaran soal',
+      tp: 'Tujuan pembelajaran soal',
+    },
+  ],
+};
+
 export default function SoalPage() {
   const [list, setList] = useState([]);
   const [mapelList, setMapelList] = useState([]);
@@ -40,6 +73,9 @@ export default function SoalPage() {
     pdf: null,
   });
   const [generating, setGenerating] = useState(false);
+  const [importJsonFile, setImportJsonFile] = useState(null);
+  const [importJsonPreview, setImportJsonPreview] = useState(null);
+  const [importingJson, setImportingJson] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [tipeFilter, setTipeFilter] = useState('semua');
   const questionRef = useRef(null);
@@ -167,6 +203,66 @@ export default function SoalPage() {
     } finally {
       setGenerating(false);
     }
+  };
+
+  const handlePreviewJson = async () => {
+    if (!importJsonFile) {
+      setError('Pilih file JSON terlebih dahulu.');
+      return;
+    }
+    setError('');
+    setSuccess('');
+    setImportingJson(true);
+    try {
+      const payload = new FormData();
+      payload.append('json', importJsonFile);
+      payload.append('mapel_id', generator.mapel_id);
+      payload.append('jenis_ujian_id', generator.jenis_ujian_id);
+      payload.append('tahun_pelajaran', generator.tahun_pelajaran);
+      const result = await api.post('/soal/import-json', payload);
+      setImportJsonPreview(result.data.data);
+    } catch (err) {
+      setImportJsonPreview(null);
+      setError(err.response?.data?.message || 'Gagal membaca file JSON.');
+    } finally {
+      setImportingJson(false);
+    }
+  };
+
+  const handleImportJson = async () => {
+    if (!importJsonFile || !importJsonPreview) return;
+    setError('');
+    setSuccess('');
+    setImportingJson(true);
+    try {
+      const payload = new FormData();
+      payload.append('json', importJsonFile);
+      payload.append('mode', 'import');
+      payload.append('mapel_id', generator.mapel_id);
+      payload.append('jenis_ujian_id', generator.jenis_ujian_id);
+      payload.append('tahun_pelajaran', generator.tahun_pelajaran);
+      const result = await api.post('/soal/import-json', payload);
+      setSuccess(result.data.message);
+      setImportJsonFile(null);
+      setImportJsonPreview(null);
+      load(1, generator.mapel_id);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Gagal mengimport soal dari JSON.');
+    } finally {
+      setImportingJson(false);
+    }
+  };
+
+  const handleDownloadJsonTemplate = () => {
+    const blob = new Blob([JSON.stringify(jsonImportTemplate, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'template-import-bank-soal.json';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   };
 
   const handleExportPdf = async () => {
@@ -422,6 +518,81 @@ export default function SoalPage() {
           <span className="text-xs text-slate">{generator.sumber_mode === 'import' ? 'PDF akan dibaca sampai maksimal 100 soal.' : 'Maksimal 50 soal dalam satu proses.'}</span>
         </div>
       </form>
+
+      <section className="card mb-8 space-y-4 border-moss/30 bg-moss/5">
+        <div className="border-b border-line pb-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-serif text-lg text-ink">Import Soal dari JSON</h2>
+              <p className="text-slate font-sans text-xs mt-1">
+                Gunakan JSON dengan array <code>soal</code>. Gambar harus berupa data URI Base64, lalu soal dapat dipratinjau sebelum disimpan.
+              </p>
+            </div>
+            <button type="button" className="btn-outline text-xs" onClick={handleDownloadJsonTemplate}>
+              Unduh Template JSON
+            </button>
+          </div>
+        </div>
+        <div className="grid sm:grid-cols-3 gap-4">
+          <div>
+            <label className="field-label">Mata Pelajaran</label>
+            <select className="field-input" value={String(generator.mapel_id || '')} onChange={(e) => handleGeneratorContext('mapel_id', e.target.value)} required>
+              <option value="">Pilih mapel</option>
+              {mapelList.map((m) => <option key={m.id} value={m.id}>{m.nama_mapel}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="field-label">Jenis Ujian</label>
+            <select className="field-input" value={String(generator.jenis_ujian_id || '')} onChange={(e) => handleGeneratorContext('jenis_ujian_id', e.target.value)} required>
+              <option value="">Pilih jenis</option>
+              {jenisUjianList.map((j) => <option key={j.id} value={j.id}>{j.nama_jenis}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="field-label">Tahun Pelajaran</label>
+            <input className="field-input" value={generator.tahun_pelajaran} onChange={(e) => handleGeneratorContext('tahun_pelajaran', e.target.value)} placeholder="2026/2027" required />
+          </div>
+        </div>
+        <input
+          type="file"
+          accept="application/json,.json"
+          className="block w-full text-sm text-slate file:mr-3 file:rounded-lg file:border-0 file:bg-moss/15 file:px-3 file:py-2 file:font-semibold file:text-moss hover:file:bg-moss/25"
+          onChange={(e) => {
+            setImportJsonFile(e.target.files?.[0] || null);
+            setImportJsonPreview(null);
+          }}
+        />
+        {importJsonFile && <p className="text-xs text-moss">File dipilih: {importJsonFile.name}</p>}
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="button" className="btn-outline" onClick={handlePreviewJson} disabled={importingJson || !importJsonFile || !generator.mapel_id || !generator.jenis_ujian_id || !generator.tahun_pelajaran}>
+            {importingJson ? 'Memeriksa JSON...' : 'Preview JSON'}
+          </button>
+          {importJsonPreview && (
+            <button type="button" className="btn-primary" onClick={handleImportJson} disabled={importingJson}>
+              {importingJson ? 'Mengimport...' : 'Simpan ke Bank Soal'}
+            </button>
+          )}
+        </div>
+        {importJsonPreview && (
+          <div className="rounded-xl border border-moss/30 bg-white p-4 text-sm">
+            <p className="font-semibold text-ink">JSON valid dan siap disimpan</p>
+            <p className="text-slate mt-1">
+              {importJsonPreview.jumlah} soal: {importJsonPreview.pilihan_ganda} pilihan ganda, {importJsonPreview.essay} essay, {importJsonPreview.dengan_gambar} dengan gambar.
+            </p>
+            {importJsonPreview.peringatan?.map((warning) => (
+              <p key={warning} className="mt-2 text-xs text-amber-700">{warning}</p>
+            ))}
+            <ul className="mt-3 space-y-1 text-xs text-slate">
+              {importJsonPreview.preview.map((item, index) => (
+                <li key={`${item.pertanyaan}-${index}`}>
+                  {index + 1}. {item.pertanyaan} ({item.tipe_soal}{item.ada_gambar ? ', dengan gambar' : ''})
+                </li>
+              ))}
+              {importJsonPreview.jumlah > importJsonPreview.preview.length && <li>... dan soal lainnya.</li>}
+            </ul>
+          </div>
+        )}
+      </section>
 
       <form onSubmit={handleSubmit} className="card mb-8 space-y-4">
         <div className="flex items-center justify-between border-b border-line pb-3">

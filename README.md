@@ -13,6 +13,7 @@ ujian secara online.
 - Generator soal menggunakan Google Gemini berdasarkan CP, TP, mata pelajaran,
   tingkat kesulitan, jumlah PG, dan jumlah Essay.
 - Import soal dari PDF dan pembuatan gambar soal dengan AI jika quota tersedia.
+- Import massal soal dari JSON dengan preview, konfirmasi, dan gambar Base64.
 - Upload, preview, edit, dan hapus gambar soal.
 - Paket ujian dengan durasi, kelas, tahun pelajaran, jumlah PG, dan jumlah Essay.
 - Urutan soal PG sebelum Essay pada ujian siswa.
@@ -21,6 +22,9 @@ ujian secara online.
 - Penilaian otomatis Pilihan Ganda.
 - Penilaian Essay dengan bantuan AI Gemini dan status menunggu penilaian jika
   layanan AI tidak tersedia.
+- Tombol **Generate Nilai** untuk mencoba kembali penilaian essay yang masih
+  berstatus menunggu penilaian; tombol tetap tersedia jika Gemini masih sibuk
+  dan hilang setelah nilai berhasil dibuat.
 - Export bank soal ke PDF (PG terlebih dahulu, kemudian Essay).
 - Export peserta/hasil ujian ke Excel.
 - Import data siswa dari Excel atau CSV beserta template.
@@ -34,6 +38,47 @@ ujian secara online.
 - Halaman login menampilkan foto sekolah di sisi kanan pada layar desktop.
 - Kartu informasi homepage menggunakan efek emboss untuk tampilan visual yang
   lebih menonjol.
+
+### Format JSON Import Soal
+
+Guru dapat mengunggah JSON melalui halaman **Bank Soal Saya > Import Soal dari
+JSON**. Tombol **Unduh Template JSON** menyediakan contoh struktur yang dapat
+diubah. Pilih mapel, jenis ujian, dan tahun pelajaran, kemudian lakukan preview
+sebelum menyimpan. Metadata tersebut juga dapat diletakkan di JSON. Gambar
+disertakan sebagai data URI Base64 (PNG, JPG, WebP, atau GIF), contohnya:
+
+```json
+{
+  "mapel_id": 1,
+  "jenis_ujian_id": 2,
+  "tahun_pelajaran": "2026/2027",
+  "soal": [
+    {
+      "tipe_soal": "pilihan_ganda",
+      "pertanyaan": "Perhatikan grafik berikut. Apa kesimpulannya?",
+      "gambar": "data:image/png;base64,<BASE64_GAMBAR_ASLI>",
+      "opsi": {
+        "A": "Pilihan A",
+        "B": "Pilihan B",
+        "C": "Pilihan C",
+        "D": "Pilihan D"
+      },
+      "jawaban_benar": "B",
+      "bobot_nilai": 1
+    }
+  ]
+}
+```
+
+Satu file dibatasi maksimal 10 MB, maksimal 100 soal, dan setiap gambar
+maksimal 5 MB. Soal hanya tersimpan setelah preview dinyatakan valid dan guru
+menekan tombol **Simpan ke Bank Soal**.
+
+Nilai seperti `REQUIRES_EXTRACTION_FROM_PDF`, nama file gambar, atau teks
+placeholder lainnya bukan gambar dan akan ditolak. Jika grafik berasal dari
+PDF, gambar tersebut harus diekspor terlebih dahulu menjadi PNG/JPG lalu
+dikonversi ke data URI Base64. Alternatifnya, gunakan `gambar: null` dan
+tambahkan gambar setelah import melalui editor soal.
 
 ## Teknologi
 
@@ -275,7 +320,12 @@ melengkapi NIS, kelas, serta jenis kelamin.
 4. Guru membuat paket ujian dan menetapkan kelas serta komposisi soal.
 5. Siswa login, memilih ujian, mengerjakan PG lalu Essay, dan mengirim jawaban.
 6. Sistem menghitung nilai PG dan mengirim Essay ke Gemini jika AI aktif.
-7. Guru dapat meninjau hasil, status penilaian, dan export data.
+7. Jika penilaian Gemini gagal atau sedang sibuk, jawaban tetap tersimpan dengan
+   status **menunggu penilaian**.
+8. Guru membuka daftar peserta, menekan **Generate Nilai**, lalu dapat mencoba
+   kembali sampai Gemini berhasil. Setelah berhasil, nilai total dibuat dan
+   tombol tersebut hilang otomatis.
+9. Guru dapat meninjau hasil dan export data.
 
 Panduan operasional lengkap tersedia di [Panduan.md](./Panduan.md).
 
@@ -301,6 +351,10 @@ Semua endpoint berada di bawah prefix `/api`.
 | `POST` | `/ujian/:id/mulai` | Siswa | Mulai atau lanjutkan ujian |
 | `POST` | `/ujian/submit` | Siswa | Kirim jawaban |
 | `GET` | `/ujian/hasil/:id` | Siswa/Guru | Lihat hasil |
+| `GET` | `/ujian/hasil/:id/peserta` | Guru/Admin | Daftar peserta dan status penilaian |
+| `POST` | `/ujian/hasil/generate-nilai/:id` | Guru/Admin | Coba ulang generate nilai essay dengan Gemini |
+| `GET` | `/ujian/hasil/detail/:id` | Guru/Admin | Detail jawaban peserta |
+| `POST` | `/ujian/hasil/nilai-essay/:id` | Guru/Admin | Simpan penilaian essay manual |
 | `GET/PUT` | `/pengaturan` | Admin | Pengaturan sekolah |
 | `GET/PUT` | `/pengaturan/ai` | Admin | Status dan konfigurasi Gemini |
 | `GET/PUT` | `/pengaturan/google` | Admin | Konfigurasi Google Client ID |
