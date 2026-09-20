@@ -90,7 +90,7 @@ export default function PenilaianEssayPage() {
                 </p>
                 {j.feedback_ai && (
                   <p className="mt-3 border-t border-line pt-3 text-xs text-slate">
-                    <span className="font-semibold text-royal">Umpan balik AI:</span> {j.feedback_ai}
+                    <span className="font-semibold text-royal">Umpan Balik Guru:</span> {j.feedback_ai}
                   </p>
                 )}
               </div>

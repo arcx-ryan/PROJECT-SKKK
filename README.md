@@ -30,6 +30,13 @@ ujian secara online.
   dan hilang setelah nilai berhasil dibuat.
 - Export bank soal ke PDF (PG terlebih dahulu, kemudian Essay).
 - Export peserta/hasil ujian ke Excel.
+- Cetak hasil pekerjaan setiap siswa ke PDF setelah seluruh penilaian selesai,
+  termasuk kop sekolah dan logo, ringkasan nilai, Bagian A Pilihan Ganda
+  (soal, opsi A-D, jawaban siswa, dan koreksi), serta Bagian B Essay
+  (soal, jawaban, nilai, dan Umpan Balik Guru).
+- PDF hasil ujian memiliki watermark samar **Ujian Sekolah - SKKK Sentani**
+  dan footer **Print Out Ujian Online, oleh Mapel: [nama mata pelajaran]**
+  pada setiap halaman.
 - Import data siswa dari Excel atau CSV beserta template.
 - Pagination bank soal maksimal 15 soal per halaman.
 - Login Google Workspace untuk domain `kalamkudussentani.sch.id`.
@@ -289,6 +296,8 @@ melengkapi NIS, kelas, serta jenis kelamin.
    kembali sampai Gemini berhasil. Setelah berhasil, nilai total dibuat dan
    tombol tersebut hilang otomatis.
 9. Guru dapat meninjau hasil dan export data.
+10. Untuk siswa dengan status **selesai**, guru dapat menekan **Cetak Hasil**
+    untuk membuka atau mengunduh PDF hasil pekerjaan siswa.
 
 Panduan operasional lengkap tersedia di [Panduan.md](./Panduan.md).
 
@@ -318,6 +327,7 @@ Semua endpoint berada di bawah prefix `/api`.
 | `POST` | `/ujian/hasil/generate-nilai/:id` | Guru/Admin | Coba ulang generate nilai essay dengan Gemini |
 | `GET` | `/ujian/hasil/detail/:id` | Guru/Admin | Detail jawaban peserta |
 | `POST` | `/ujian/hasil/nilai-essay/:id` | Guru/Admin | Simpan penilaian essay manual |
+| `GET` | `/ujian/hasil/:id/cetak` | Guru/Admin | Cetak hasil pekerjaan satu siswa ke PDF |
 | `GET/PUT` | `/pengaturan` | Admin | Pengaturan sekolah |
 | `GET/PUT` | `/pengaturan/ai` | Admin | Status dan konfigurasi Gemini |
 | `GET/PUT` | `/pengaturan/google` | Admin | Konfigurasi Google Client ID |

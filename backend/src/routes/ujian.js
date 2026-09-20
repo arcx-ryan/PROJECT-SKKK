@@ -21,6 +21,7 @@ router.get('/hasil/:id/peserta', authorizeRole('guru', 'admin'), c.getPesertaUji
 router.get('/hasil/detail/:id', authorizeRole('guru', 'admin'), c.getDetailJawaban);
 router.post('/hasil/generate-nilai/:id', authorizeRole('guru', 'admin'), c.generateNilai);
 router.post('/hasil/nilai-essay/:id', authorizeRole('guru', 'admin'), c.nilaiEssay);
+router.get('/hasil/:id/cetak', authorizeRole('guru', 'admin'), c.cetakHasilSiswa);
 
 // Guru & Admin: Export Excel
 router.get('/:id/export', authorizeRole('guru', 'admin'), c.exportExcel);

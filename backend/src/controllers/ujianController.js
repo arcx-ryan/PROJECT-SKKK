@@ -1,6 +1,10 @@
-const { Ujian, Soal, HasilUjian, JawabanSiswa, MataPelajaran, JenisUjian, Kelas, Pengaturan, User, sequelize } = require('../models');
+const fs = require('fs');
+const path = require('path');
+const { Ujian, Soal, HasilUjian, JawabanSiswa, MataPelajaran, JenisUjian, Kelas, Siswa, Pengaturan, User, sequelize } = require('../models');
 const { shuffleArray } = require('../utils/shuffle');
 const { getGeminiConfig } = require('../utils/geminiConfig');
+const PDFDocument = require('pdfkit');
+const { uploadDir } = require('../utils/uploadDir');
 
 function parseGeminiJson(text) {
   const cleaned = String(text || '')
@@ -678,6 +682,166 @@ exports.nilaiEssay = async (req, res) => {
   } catch (err) {
     await t.rollback();
     res.status(500).json({ message: 'Gagal menyimpan nilai', error: err.message });
+  }
+};
+
+// ---------- GURU: Cetak hasil satu siswa ----------
+exports.cetakHasilSiswa = async (req, res) => {
+  try {
+    const pengaturan = await Pengaturan.findByPk(1);
+    const hasil = await HasilUjian.findByPk(req.params.id, {
+      include: [
+        {
+          model: Siswa,
+          attributes: ['nis'],
+          include: [{ model: User, attributes: ['nama'] }, Kelas],
+        },
+        { model: Ujian, include: [MataPelajaran, JenisUjian, Kelas] },
+      ],
+    });
+
+    if (!hasil) return res.status(404).json({ message: 'Hasil ujian tidak ditemukan.' });
+    if (req.user.role === 'guru' && hasil.Ujian?.dibuat_oleh !== req.user.guru_id) {
+      return res.status(403).json({ message: 'Anda tidak memiliki akses untuk mencetak hasil ujian ini.' });
+    }
+    if (hasil.status !== 'selesai') {
+      return res.status(409).json({ message: 'Hasil belum dapat dicetak karena belum selesai dinilai.' });
+    }
+
+    const jawaban = await JawabanSiswa.findAll({
+      where: { hasil_ujian_id: hasil.id },
+      order: [['id', 'ASC']],
+    });
+    const soalList = await Soal.findAll({ where: { id: jawaban.map((item) => item.soal_id) } });
+    const soalMap = Object.fromEntries(soalList.map((soal) => [soal.id, soal]));
+    const siswaNama = hasil.Siswa?.User?.nama || 'Siswa';
+    const safeName = siswaNama.replace(/[^a-z0-9]+/gi, '_');
+    const doc = new PDFDocument({ size: 'A4', margin: 50, bufferPages: true });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="Hasil_${safeName}_${hasil.id}.pdf"`);
+    doc.pipe(res);
+
+    const text = (value, options = {}) => {
+      doc
+        .font(options.font || 'Helvetica')
+        .fontSize(options.size || 10)
+        .fillColor(options.color || '#12345B')
+        .text(String(value ?? '-'), {
+          width: options.width || 495,
+          align: options.align || 'left',
+          lineGap: options.lineGap || 2,
+        });
+    };
+    const ensureSpace = (height = 80) => {
+      if (doc.y + height > doc.page.height - 75) doc.addPage();
+    };
+    const formatScore = (value) => (value === null || value === undefined ? '-' : value);
+
+    const logoPath = pengaturan?.logo_path?.startsWith('/uploads/')
+      ? path.join(uploadDir, pengaturan.logo_path.slice('/uploads/'.length))
+      : null;
+    if (logoPath && fs.existsSync(logoPath)) {
+      doc.image(logoPath, (doc.page.width - 80) / 2, doc.y, { fit: [80, 80], align: 'center' });
+      doc.y += 86;
+    }
+    const centeredText = (value, options = {}) => text(value, {
+      ...options,
+      align: 'center',
+      width: 495,
+    });
+    centeredText('HASIL PEKERJAAN SISWA', { font: 'Helvetica-Bold', size: 12, color: '#1E5AA8' });
+    centeredText(hasil.Ujian?.judul || 'Ujian', { font: 'Helvetica-Bold', size: 19, color: '#000000' });
+    centeredText(`Mata Pelajaran: ${hasil.Ujian?.MataPelajaran?.nama_mapel || '-'}`, { size: 12, color: '#000000' });
+    centeredText(`Jenis Ujian: ${hasil.Ujian?.JenisUjian?.nama_jenis || '-'}`, { size: 12, color: '#000000' });
+    centeredText(`Tahun Pelajaran: ${hasil.Ujian?.tahun_pelajaran || pengaturan?.tahun_pelajaran_aktif || '-'}`, { size: 11, color: '#000000' });
+    doc.moveDown(0.7);
+    text(`Nama: ${siswaNama}`);
+    text(`NIS: ${hasil.Siswa?.nis || '-'} | Kelas: ${hasil.Siswa?.Kela?.nama_kelas || hasil.Ujian?.Kela?.nama_kelas || '-'}`);
+    text(`Selesai: ${hasil.waktu_selesai ? new Date(hasil.waktu_selesai).toLocaleString('id-ID') : '-'}`);
+    doc.moveDown(0.7);
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#D8E3EF').stroke();
+    doc.moveDown(0.8);
+    text('RINGKASAN NILAI', { font: 'Helvetica-Bold', size: 12 });
+    text(`Nilai Akhir: ${formatScore(hasil.nilai)} | Pilihan Ganda: ${formatScore(hasil.nilai_pilihan_ganda)} | Essay: ${formatScore(hasil.nilai_essay)}`);
+    text(`Benar: ${hasil.jumlah_benar ?? 0} | Salah: ${hasil.jumlah_salah ?? 0}`);
+    const pilihanGanda = jawaban.filter((item) => soalMap[item.soal_id]?.tipe_soal === 'pilihan_ganda');
+    const essay = jawaban.filter((item) => soalMap[item.soal_id]?.tipe_soal === 'essay');
+    const renderSection = (title, items, renderItem) => {
+      ensureSpace(70);
+      doc.moveDown(1);
+      text(title, { font: 'Helvetica-Bold', size: 14, color: '#1E5AA8' });
+      if (!items.length) {
+        text('Tidak ada soal pada bagian ini.', { color: '#536B84' });
+        return;
+      }
+      items.forEach((item, index) => renderItem(item, index));
+    };
+
+    const renderQuestion = (item, index, renderAnswer) => {
+      const soal = soalMap[item.soal_id] || {};
+      ensureSpace(100);
+      text(`${index + 1}. ${soal.pertanyaan || '-'}`, { font: 'Helvetica-Bold', size: 10 });
+      renderAnswer(item, soal);
+      doc.moveDown(0.6);
+    };
+
+    renderSection('Bagian A. Pilihan Ganda', pilihanGanda, (item, index) => renderQuestion(item, index, (answer, soal) => {
+        let opsi = soal.opsi || {};
+        if (typeof opsi === 'string') {
+          try { opsi = JSON.parse(opsi); } catch { opsi = {}; }
+        }
+        ['A', 'B', 'C', 'D'].forEach((key) => {
+          text(`${key}. ${opsi[key] || '-'}`, { width: 480, lineGap: 1 });
+        });
+        const selected = item.jawaban_dipilih || '-';
+        text(`Jawaban siswa: ${selected}${opsi[selected] ? ` - ${opsi[selected]}` : ''}`);
+        text(`Koreksi: ${item.is_benar ? 'Benar' : 'Salah'}`, { color: item.is_benar ? '#14866D' : '#A43D2F' });
+        if (!item.is_benar) text(`Jawaban benar: ${soal.jawaban_benar || '-'}`);
+      }));
+
+    renderSection('Bagian B. Essay', essay, (item, index) => renderQuestion(item, index, (answer, soal) => {
+      text(`Jawaban siswa: ${answer.jawaban_dipilih || '-'}`);
+      text(`Nilai: ${formatScore(answer.nilai_essay)} / ${soal.bobot_nilai ?? '-'}`, { color: '#14866D' });
+      text(`Umpan Balik Guru: ${answer.feedback_ai || '-'}`, { color: '#536B84' });
+    }));
+
+    const footerText = `Print Out Ujian Online, oleh Mapel: ${hasil.Ujian?.MataPelajaran?.nama_mapel || '-'}`;
+    const watermarkText = 'Ujian Sekolah - SKKK Sentani';
+    const pageRange = doc.bufferedPageRange();
+    for (let pageIndex = pageRange.start; pageIndex < pageRange.start + pageRange.count; pageIndex += 1) {
+      doc.switchToPage(pageIndex);
+      doc.save();
+      const originalBottomMargin = doc.page.margins.bottom;
+      doc.page.margins.bottom = 0;
+      doc.font('Helvetica')
+        .fontSize(30)
+        .fillColor('#12345B')
+        .fillOpacity(0.08);
+      doc.rotate(-35, { origin: [doc.page.width / 2, doc.page.height / 2] })
+        .text(watermarkText, 0, doc.page.height / 2 - 18, {
+          width: doc.page.width,
+          align: 'center',
+          lineBreak: false,
+        });
+      doc.rotate(35, { origin: [doc.page.width / 2, doc.page.height / 2] });
+      doc.fillOpacity(1);
+      doc.font('Helvetica')
+        .fontSize(8)
+        .fillColor('#536B84')
+        .text(footerText, 50, doc.page.height - 36, {
+          width: 495,
+          align: 'center',
+          lineBreak: false,
+        });
+      doc.page.margins.bottom = originalBottomMargin;
+      doc.restore();
+    }
+
+    doc.end();
+  } catch (err) {
+    console.error('Cetak hasil siswa error:', err);
+    if (!res.headersSent) res.status(500).json({ message: 'Gagal membuat hasil cetak.', error: err.message });
   }
 };
 

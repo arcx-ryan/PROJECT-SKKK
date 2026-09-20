@@ -8,6 +8,7 @@ export default function PesertaUjianPage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatingId, setGeneratingId] = useState(null);
+  const [printingId, setPrintingId] = useState(null);
 
   useEffect(() => {
     api.get(`/ujian/hasil/${id}/peserta`)
@@ -62,6 +63,39 @@ export default function PesertaUjianPage() {
     }
   };
 
+  const handlePrint = async (hasilId, namaSiswa) => {
+    setPrintingId(hasilId);
+    try {
+      const response = await api.get(`/ujian/hasil/${hasilId}/cetak`, { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
+      const printWindow = window.open(url, '_blank', 'noopener,noreferrer');
+      if (printWindow) {
+        printWindow.addEventListener('load', () => printWindow.print(), { once: true });
+      } else {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Hasil_${namaSiswa || hasilId}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      const message = err.response?.data instanceof Blob
+        ? await err.response.data.text()
+        : null;
+      let detail = '';
+      try {
+        detail = message ? JSON.parse(message).message : '';
+      } catch {
+        detail = '';
+      }
+      alert(detail || 'Gagal menyiapkan hasil cetak.');
+    } finally {
+      setPrintingId(null);
+    }
+  };
+
   if (loading) return <div>Memuat data peserta...</div>;
 
   return (
@@ -86,13 +120,15 @@ export default function PesertaUjianPage() {
             </tr>
           </thead>
           <tbody>
-            {peserta.map((p, idx) => (
-              <tr key={p.id} className="border-t border-line">
+            {peserta.map((p, idx) => {
+              const status = String(p.status || '').trim().toLowerCase();
+              return (
+                <tr key={p.id} className="border-t border-line">
                 <td className="px-4 py-2">{idx + 1}</td>
                 <td className="px-4 py-2 text-ink">{p.Siswa?.User?.nama || '-'}</td>
                 <td className="px-4 py-2 text-slate">{p.Siswa?.Kela?.nama_kelas || '-'}</td>
                 <td className="px-4 py-2 text-slate">
-                  {p.status === 'menunggu_penilaian' ? <span className="text-rust">Menunggu Penilaian</span> : p.status}
+                  {status === 'menunggu_penilaian' ? <span className="text-rust">Menunggu Penilaian</span> : p.status}
                 </td>
                 <td className="px-4 py-2 text-slate">{p.nilai !== null ? p.nilai : '-'}</td>
                 <td className="px-4 py-2">
@@ -100,7 +136,7 @@ export default function PesertaUjianPage() {
                     <Link to={`/guru/penilaian/${p.id}`} className="text-moss hover:underline">
                       Lihat Jawaban
                     </Link>
-                    {p.status === 'menunggu_penilaian' && (
+                    {status === 'menunggu_penilaian' && (
                       <button
                         type="button"
                         onClick={() => handleGenerateNilai(p.id)}
@@ -110,10 +146,21 @@ export default function PesertaUjianPage() {
                         {generatingId === p.id ? 'Membuat Nilai...' : 'Generate Nilai'}
                       </button>
                     )}
+                    {status === 'selesai' && (
+                      <button
+                        type="button"
+                        onClick={() => handlePrint(p.id, p.Siswa?.User?.nama)}
+                        disabled={printingId === p.id}
+                        className="btn-outline !px-3 !py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {printingId === p.id ? 'Menyiapkan...' : 'Cetak Hasil'}
+                      </button>
+                    )}
                   </div>
                 </td>
-              </tr>
-            ))}
+                </tr>
+              );
+            })}
             {peserta.length === 0 && <tr><td colSpan={6} className="px-4 py-6 text-center text-slate">Belum ada peserta.</td></tr>}
           </tbody>
         </table>
